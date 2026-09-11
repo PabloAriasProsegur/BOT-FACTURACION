@@ -16,6 +16,7 @@ APP_DIR = os.path.dirname(os.path.abspath(__file__))
 LOGO_LARGO = os.path.join(APP_DIR, "logolargo.jpg")
 LOGO_PEQUENO = os.path.join(APP_DIR, "logopequeno.jpg")
 TRAINING_FILE = os.path.join(APP_DIR, "training_data.csv")
+CHAT_HISTORY_FILE = os.path.join(APP_DIR, "chat_history.json")
 
 REQUIRED_COLUMNS = ["cliente", "servicio", "periodo", "importe", "fecha", "estado"]
 
@@ -87,6 +88,52 @@ def append_training_log(entry):
     data.append(entry)
     with open(log_path, "w", encoding="utf-8") as f:
         json.dump(data, f, ensure_ascii=False, indent=2)
+
+
+def load_chat_history():
+    try:
+        with open(CHAT_HISTORY_FILE, "r", encoding="utf-8") as f:
+            chats = json.load(f)
+        if isinstance(chats, list) and chats:
+            return chats
+    except Exception:
+        pass
+    return [{"id": "chat-1", "title": "Consulta nueva", "messages": []}]
+
+
+def save_chat_history(chats):
+    with open(CHAT_HISTORY_FILE, "w", encoding="utf-8") as f:
+        json.dump(chats, f, ensure_ascii=False, indent=2)
+
+
+def persist_current_chat():
+    chats = st.session_state.chat_history
+    current_id = st.session_state.current_chat_id
+    current = next((chat for chat in chats if chat["id"] == current_id), None)
+    if current is None:
+        current = {"id": current_id, "title": "Consulta nueva", "messages": []}
+        chats.append(current)
+    current["messages"] = st.session_state.messages
+    user_messages = [m["content"] for m in st.session_state.messages if m["role"] == "user"]
+    if user_messages:
+        current["title"] = user_messages[0][:34] + ("..." if len(user_messages[0]) > 34 else "")
+    save_chat_history(chats)
+
+
+def start_new_chat():
+    persist_current_chat()
+    new_id = f"chat-{len(st.session_state.chat_history) + 1}"
+    st.session_state.chat_history.append({"id": new_id, "title": "Consulta nueva", "messages": []})
+    st.session_state.current_chat_id = new_id
+    st.session_state.messages = []
+    save_chat_history(st.session_state.chat_history)
+
+
+def open_chat(chat_id):
+    persist_current_chat()
+    selected = next(chat for chat in st.session_state.chat_history if chat["id"] == chat_id)
+    st.session_state.current_chat_id = chat_id
+    st.session_state.messages = selected.get("messages", [])
 
 
 def normalize_question_answer_data(raw_entries):
@@ -341,8 +388,12 @@ st.markdown(
     }
 
     html, body, [data-testid="stAppViewContainer"] {
-        background: #070707;
+        background: linear-gradient(135deg, #050505 0%, #0b0b0b 52%, #11100a 100%);
         color: var(--text);
+    }
+
+    [data-testid="stHeader"] {
+        background: transparent !important;
     }
 
     [data-testid="stSidebar"] {
@@ -350,17 +401,77 @@ st.markdown(
         border-right: 1px solid var(--line);
     }
 
+    [data-testid="stSidebar"] * {
+        color: #f5f5f5 !important;
+    }
+
+    [data-testid="stSidebar"] .stCaption,
+    [data-testid="stSidebar"] small {
+        color: #cfcfcf !important;
+    }
+
+    [data-testid="stSidebar"] .stButton > button {
+        background: rgba(255,255,255,0.045) !important;
+        color: #ffffff !important;
+        border: 1px solid rgba(255,255,255,0.12) !important;
+        box-shadow: none !important;
+        text-align: left !important;
+        transition: background 160ms ease, border-color 160ms ease;
+    }
+
+    [data-testid="stSidebar"] .stButton > button:hover {
+        background: rgba(245,196,0,0.14) !important;
+        border-color: rgba(245,196,0,0.65) !important;
+        color: #ffffff !important;
+    }
+
+    .logo-frame {
+        background: #ffffff;
+        border-radius: 16px;
+        padding: 0.55rem 0.7rem;
+        margin-bottom: 0.8rem;
+        text-align: center;
+        box-shadow: 0 12px 28px rgba(0,0,0,0.32);
+    }
+
+    [data-testid="stSidebar"] [data-testid="stImage"] img {
+        border-radius: 10px;
+    }
+
+    .chat-list-title {
+        color: #ffd64d !important;
+        font-size: 0.72rem;
+        font-weight: 900;
+        letter-spacing: 0.12em;
+        text-transform: uppercase;
+        margin: 1rem 0 0.5rem;
+    }
+
+    .chat-list-item button {
+        background: rgba(255,255,255,0.06) !important;
+        color: #ffffff !important;
+        border: 1px solid rgba(255,255,255,0.12) !important;
+        text-align: left !important;
+        margin-bottom: 0.35rem;
+    }
+
     .main .block-container {
-        padding-top: 1rem;
-        padding-bottom: 2rem;
+        padding-top: 0.8rem;
+        padding-bottom: 3rem;
+        max-width: 1400px;
+    }
+
+    [data-testid="stImage"] img {
+        border-radius: 18px;
+        box-shadow: 0 18px 42px rgba(0,0,0,0.3);
     }
 
     .panel-box {
-        background: rgba(255,255,255,0.02);
-        border: 1px solid var(--line);
-        border-radius: 18px;
-        padding: 1.1rem 1.2rem;
-        box-shadow: 0 12px 26px rgba(0,0,0,0.18);
+        background: rgba(255,255,255,0.035);
+        border: 1px solid rgba(255,255,255,0.12);
+        border-radius: 20px;
+        padding: 1.35rem 1.45rem;
+        box-shadow: 0 18px 38px rgba(0,0,0,0.22);
     }
 
     .section-tag {
@@ -380,11 +491,12 @@ st.markdown(
     }
 
     .stat-card {
-        background: linear-gradient(135deg, rgba(245,196,0,0.08), rgba(255,255,255,0.02));
+        background: linear-gradient(145deg, rgba(245,196,0,0.13), rgba(255,255,255,0.035));
         border: 1px solid rgba(245,196,0,0.35);
-        border-radius: 18px;
-        padding: 1rem 1.2rem;
+        border-radius: 20px;
+        padding: 1.15rem 1.25rem;
         min-height: 160px;
+        box-shadow: 0 18px 34px rgba(0,0,0,0.2);
     }
 
     .big-number {
@@ -406,6 +518,13 @@ st.markdown(
         font-weight: 800;
         letter-spacing: 0.08em;
         text-transform: uppercase;
+        box-shadow: 0 5px 16px rgba(245,196,0,0.08);
+    }
+
+    [data-testid="stExpander"] {
+        background: rgba(255,255,255,0.035);
+        border: 1px solid rgba(255,255,255,0.1);
+        border-radius: 16px;
     }
 
     .stFileUploader > div {
@@ -451,6 +570,22 @@ st.markdown(
         border-radius: 12px !important;
     }
 
+    [data-testid="stChatInput"] {
+        background: #070707 !important;
+        border-top: 1px solid rgba(245,196,0,0.12);
+        padding-top: 0.4rem;
+    }
+
+    [data-testid="stBottom"] {
+        background: #070707 !important;
+    }
+
+    [data-testid="stChatInput"] > div {
+        background: #111111 !important;
+        border: 1px solid rgba(245,196,0,0.45) !important;
+        border-radius: 14px !important;
+    }
+
     .file-pill {
         display: inline-block;
         background: rgba(255,255,255,0.03);
@@ -479,10 +614,26 @@ if "faq_entries" not in st.session_state:
     st.session_state.faq_entries = load_faq_entries()
 
 if "messages" not in st.session_state:
+    st.session_state.messages = []
+
+if "chat_history" not in st.session_state:
+    st.session_state.chat_history = load_chat_history()
+
+if "current_chat_id" not in st.session_state:
+    st.session_state.current_chat_id = st.session_state.chat_history[0]["id"]
+
+if not st.session_state.messages:
+    current_chat = next(
+        chat for chat in st.session_state.chat_history
+        if chat["id"] == st.session_state.current_chat_id
+    )
+    st.session_state.messages = current_chat.get("messages", [])
+
+if not st.session_state.messages:
     st.session_state.messages = [
         {
             "role": "assistant",
-            "content": "Hola, soy el asistente de facturación de Prosegur Alarmas. Subí un archivo o consultá por validación, errores, clientes, servicios o fechas.",
+            "content": "Hola, soy el asistente de facturación de Prosegur Alarmas. Subí un archivo con el botón + o consultá por validación, errores, clientes, servicios o fechas.",
         }
     ]
 
@@ -522,6 +673,18 @@ with left_col:
     with col_c:
         st.metric("Validación", "QA test")
 
+    with st.expander("Administrar base de conocimiento"):
+        uploaded_training = st.file_uploader(
+            "Importar dataset de entrenamiento",
+            type=["csv", "xlsx", "xls"],
+            key="training_dataset",
+        )
+        if uploaded_training is not None:
+            if import_training_file(uploaded_training):
+                st.success("Base de conocimiento actualizada correctamente.")
+            else:
+                st.warning("El archivo debe tener columnas: question, answer y keywords opcional.")
+
 with right_col:
     st.markdown(
         """
@@ -549,45 +712,47 @@ with right_col:
 
 
 with st.sidebar:
-    st.image(LOGO_PEQUENO, width=220)
+    st.markdown("<div class='logo-frame'>", unsafe_allow_html=True)
+    st.image(LOGO_PEQUENO, use_container_width=True)
+    st.markdown("</div>", unsafe_allow_html=True)
     st.markdown("<div style='height: 0.6rem;'></div>", unsafe_allow_html=True)
     st.markdown("<div class='mini-pill'>Asistente interno</div>", unsafe_allow_html=True)
     st.markdown("<div style='height: 1rem;'></div>", unsafe_allow_html=True)
 
-    st.subheader("Entrenamiento inteligente")
-    uploaded_training = st.file_uploader(
-        "Importar dataset de entrenamiento",
-        type=["csv", "xlsx", "xls"],
-        key="training_dataset",
-    )
-    if uploaded_training is not None:
-        if import_training_file(uploaded_training):
-            st.success("Base de conocimiento actualizada correctamente.")
-        else:
-            st.warning("El archivo debe tener columnas: question, answer (y opcionalmente keywords).")
+    if st.button("+  Nuevo chat", use_container_width=True):
+        start_new_chat()
+        st.rerun()
 
-    with st.form("training_form"):
-        st.text_input("Pregunta nueva", key="new_question")
-        st.text_area("Respuesta", key="new_answer")
-        st.text_input("Palabras clave (separadas por coma)", key="new_keywords")
-        if st.form_submit_button("Guardar conocimiento"):
-            if add_new_training_entry(st.session_state.new_question, st.session_state.new_answer, st.session_state.new_keywords):
-                st.success("Nuevo aprendizaje agregado y guardado.")
-                st.rerun()
-            else:
-                st.warning("Necesitás completar pregunta y respuesta para entrenar.")
+    st.markdown("<div class='chat-list-title'>Conversaciones guardadas</div>", unsafe_allow_html=True)
+    for chat in reversed(st.session_state.chat_history):
+        item_label = chat["title"] or "Consulta nueva"
+        if st.button(item_label, key=f"open_{chat['id']}", use_container_width=True):
+            open_chat(chat["id"])
+            st.rerun()
 
-    if st.button("Entrenar + test automático", use_container_width=True):
-        vectorizer, question_vectors = prepare_chatbot(st.session_state.faq_entries)
-        tests, accuracy = run_automatic_tests(st.session_state.faq_entries, vectorizer, question_vectors)
-        st.session_state.last_test_accuracy = accuracy
-        st.session_state.last_test_results = tests
-        st.success(f"Entrenamiento finalizado. Precisión del test: {accuracy}%")
+    with st.expander("Entrenamiento inteligente"):
+        with st.form("training_form"):
+            st.text_input("Pregunta nueva", key="new_question")
+            st.text_area("Respuesta", key="new_answer")
+            st.text_input("Palabras clave (separadas por coma)", key="new_keywords")
+            if st.form_submit_button("Guardar conocimiento"):
+                if add_new_training_entry(st.session_state.new_question, st.session_state.new_answer, st.session_state.new_keywords):
+                    st.success("Nuevo aprendizaje agregado y guardado.")
+                    st.rerun()
+                else:
+                    st.warning("Necesitás completar pregunta y respuesta para entrenar.")
 
-    if st.button("Reiniciar base de ejemplo", use_container_width=True):
-        st.session_state.faq_entries = normalize_question_answer_data(DEFAULT_FAQ)
-        save_faq_entries(st.session_state.faq_entries)
-        st.success("Se restauró la base inicial.")
+        if st.button("Entrenar + test automático", use_container_width=True):
+            vectorizer, question_vectors = prepare_chatbot(st.session_state.faq_entries)
+            tests, accuracy = run_automatic_tests(st.session_state.faq_entries, vectorizer, question_vectors)
+            st.session_state.last_test_accuracy = accuracy
+            st.session_state.last_test_results = tests
+            st.success(f"Entrenamiento finalizado. Precisión del test: {accuracy}%")
+
+        if st.button("Reiniciar base de ejemplo", use_container_width=True):
+            st.session_state.faq_entries = normalize_question_answer_data(DEFAULT_FAQ)
+            save_faq_entries(st.session_state.faq_entries)
+            st.success("Se restauró la base inicial.")
 
     st.markdown("<hr style='border: 1px solid rgba(255,255,255,0.08); margin: 1rem 0;'>", unsafe_allow_html=True)
 
@@ -600,23 +765,12 @@ with st.sidebar:
 
     st.markdown("<hr style='border: 1px solid rgba(255,255,255,0.08); margin: 1rem 0;'>", unsafe_allow_html=True)
 
-    st.subheader("Adjuntar archivos")
-    uploaded = st.file_uploader(
-        "Seleccioná el archivo para revisar",
-        type=["xlsx", "xls", "csv", "txt", "pdf"],
-        accept_multiple_files=True,
-        key="uploaded_files",
-    )
-
-    if uploaded:
-        st.caption("Archivos cargados:")
-        for file_obj in uploaded:
-            st.markdown(f"<span class='file-pill'>{file_obj.name}</span>", unsafe_allow_html=True)
-
-    st.markdown("<hr style='border: 1px solid rgba(255,255,255,0.08); margin: 1rem 0;'>", unsafe_allow_html=True)
-
     if st.button("Limpiar conversación", use_container_width=True):
-        st.session_state.messages = []
+        st.session_state.messages = [{
+            "role": "assistant",
+            "content": "Conversación limpia. Subí un archivo con el botón + o escribí tu consulta de facturación.",
+        }]
+        persist_current_chat()
         st.rerun()
 
 
@@ -633,18 +787,26 @@ for message in st.session_state.messages:
     with st.chat_message(message["role"]):
         st.markdown(message["content"])
 
-prompt = st.chat_input("Escribí tu consulta sobre facturación, validación o archivo...")
+chat_submission = st.chat_input(
+    "Escribí tu consulta sobre facturación, validación o archivo...",
+    accept_file="multiple",
+    file_type=["xlsx", "xls", "csv", "txt", "pdf"],
+)
 
-if prompt:
+if chat_submission:
+    prompt = chat_submission.text
+    uploaded_files = chat_submission.files
+    if uploaded_files:
+        st.session_state.uploaded_files = uploaded_files
     st.session_state.messages.append({"role": "user", "content": prompt})
     with st.chat_message("user"):
         st.markdown(prompt)
 
-    uploaded_files = st.session_state.get("uploaded_files", [])
     response = get_response(prompt, uploaded_files, st.session_state.faq_entries, vectorizer=vectorizer, question_vectors=question_vectors)
     with st.chat_message("assistant"):
         st.markdown(response)
     st.session_state.messages.append({"role": "assistant", "content": response})
+    persist_current_chat()
 
 if st.session_state.get("last_test_results"):
     st.markdown("<div style='height: 1rem;'></div>", unsafe_allow_html=True)
